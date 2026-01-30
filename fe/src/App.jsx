@@ -414,13 +414,25 @@ export default function App() {
         return;
       }
       setImageFile(file);
-      
+
       // Create preview
       const reader = new FileReader();
       reader.onload = (event) => {
         setImagePreview(event.target.result);
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  const handleAudioUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (!file.type.startsWith('audio/')) {
+        setError('Please select a valid audio file');
+        return;
+      }
+      setAudioFile(file);
+      setError('');
     }
   };
 
