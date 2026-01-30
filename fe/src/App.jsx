@@ -360,6 +360,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Search, AlertTriangle, CheckCircle, Lock, ShieldAlert, ShieldCheck, Globe, MapPin, Upload } from 'lucide-react';
+import { OSINT_ENDPOINTS } from './config';
 
 export default function App() {
   const [email, setEmail] = useState('');
@@ -409,30 +410,72 @@ export default function App() {
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
-      if (!file.type.startsWith('image/')) {
-        setError('Please select a valid image file');
-        return;
-      }
-      setImageFile(file);
+      processImageFile(file);
+    }
+  };
 
-      // Create preview
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setImagePreview(event.target.result);
-      };
-      reader.readAsDataURL(file);
+  const processImageFile = (file) => {
+    if (!file.type.startsWith('image/')) {
+      setError('Please select a valid image file');
+      return;
+    }
+    setImageFile(file);
+    setError('');
+
+    // Create preview
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setImagePreview(event.target.result);
+    };
+    reader.onerror = () => {
+      setError('Failed to read image file');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleImageDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleImageDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const files = e.dataTransfer?.files;
+    if (files && files.length > 0) {
+      processImageFile(files[0]);
     }
   };
 
   const handleAudioUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
-      if (!file.type.startsWith('audio/')) {
-        setError('Please select a valid audio file');
-        return;
-      }
-      setAudioFile(file);
-      setError('');
+      processAudioFile(file);
+    }
+  };
+
+  const processAudioFile = (file) => {
+    if (!file.type.startsWith('audio/')) {
+      setError('Please select a valid audio file');
+      return;
+    }
+    setAudioFile(file);
+    setError('');
+  };
+
+  const handleAudioDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleAudioDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const files = e.dataTransfer?.files;
+    if (files && files.length > 0) {
+      processAudioFile(files[0]);
     }
   };
 
@@ -452,12 +495,12 @@ export default function App() {
     setResults(null);
 
     try {
-      let url = 'http://localhost:8000/osint/scan';
+      let url = OSINT_ENDPOINTS.scan;
       const body = new FormData();
 
       // Use combined endpoint if image or audio is provided
       if (imageToUpload || audioToUpload) {
-        url = 'http://localhost:8000/osint/scan-with-media';
+        url = OSINT_ENDPOINTS.scanWithMedia;
         body.append('email', emailToCheck || '');
         body.append('username', usernameToCheck || '');
         if (imageToUpload) body.append('image', imageToUpload);
@@ -525,7 +568,16 @@ export default function App() {
         setLoading(false);
       }, 500);
     } catch (err) {
-      setError(err.message || 'Connection lost. Check if backend is running.');
+      // Provide detailed error message
+      let errorMsg = 'Connection lost. ';
+
+      if (err.message.includes('Failed to fetch')) {
+        errorMsg += `Backend server not reachable at ${OSINT_ENDPOINTS.scan}. Make sure the backend is running.`;
+      } else {
+        errorMsg += err.message || 'Check if backend is running.';
+      }
+
+      setError(errorMsg);
       setLoading(false);
     }
   };
@@ -596,6 +648,8 @@ export default function App() {
                 </label>
                 <div
                   onClick={() => imageInputRef.current?.click()}
+                  onDragOver={handleImageDragOver}
+                  onDrop={handleImageDrop}
                   className="border-2 border-dashed border-lime-600 border-opacity-40 rounded p-6 cursor-pointer transition-all duration-300 hover:border-opacity-100 bg-black"
                 >
                   <input
@@ -632,6 +686,8 @@ export default function App() {
                 </label>
                 <div
                   onClick={() => audioInputRef.current?.click()}
+                  onDragOver={handleAudioDragOver}
+                  onDrop={handleAudioDrop}
                   className="border-2 border-dashed border-lime-600 border-opacity-40 rounded p-6 cursor-pointer transition-all duration-300 hover:border-opacity-100 bg-black"
                 >
                   <input
