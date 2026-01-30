@@ -9,3 +9,4 @@ python-multipart==0.0.6
 openai-whisper==20240314
 Pillow==10.1.0
 python-dotenv==1.0.0
+geoclip==0.1.1
