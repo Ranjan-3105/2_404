@@ -1,4 +1,3 @@
-
 from fastapi import FastAPI, HTTPException, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -7,11 +6,20 @@ import asyncio
 import subprocess
 import json
 import time
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from PIL import Image
 import io
 import base64
 import os
+import tempfile
+
+# Try to import Whisper for audio transcription
+try:
+    import whisper
+    WHISPER_AVAILABLE = True
+except ImportError:
+    WHISPER_AVAILABLE = False
+    print("Warning: Whisper not installed. Install with: pip install openai-whisper")
 
 # Try to import GeoCLIP, if not available, handle gracefully
 try:
