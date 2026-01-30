@@ -360,6 +360,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Search, AlertTriangle, CheckCircle, Lock, ShieldAlert, ShieldCheck, Globe, MapPin, Upload } from 'lucide-react';
+import { OSINT_ENDPOINTS } from './config';
 
 export default function App() {
   const [email, setEmail] = useState('');
