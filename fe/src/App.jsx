@@ -450,12 +450,31 @@ export default function App() {
   const handleAudioUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
-      if (!file.type.startsWith('audio/')) {
-        setError('Please select a valid audio file');
-        return;
-      }
-      setAudioFile(file);
-      setError('');
+      processAudioFile(file);
+    }
+  };
+
+  const processAudioFile = (file) => {
+    if (!file.type.startsWith('audio/')) {
+      setError('Please select a valid audio file');
+      return;
+    }
+    setAudioFile(file);
+    setError('');
+  };
+
+  const handleAudioDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleAudioDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const files = e.dataTransfer?.files;
+    if (files && files.length > 0) {
+      processAudioFile(files[0]);
     }
   };
 
