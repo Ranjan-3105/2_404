@@ -1,238 +1,5 @@
-# from fastapi import FastAPI, HTTPException
-# from fastapi.middleware.cors import CORSMiddleware
-# from pydantic import BaseModel
-# import aiohttp
-# import asyncio
-# import subprocess
-# import json
-# import requests
-# from typing import Optional, Dict, Any
-# import re
 
-# app = FastAPI(title="OSINT Scanner API")
-
-# # Enable CORS for frontend communication
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=["*"],
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
-
-# class OSINTRequest(BaseModel):
-#     email: Optional[str] = None
-#     username: Optional[str] = None
-
-# class OSINTResponse(BaseModel):
-#     breach_data: Dict[str, Any]
-#     maigret_results: Dict[str, Any]
-#     holehe_results: Dict[str, Any]
-#     summary: Dict[str, Any]
-
-# # ============= HIBP API Functions =============
-# async def check_hibp_breaches(email: str) -> Dict[str, Any]:
-#     """
-#     Check Have I Been Pwned for email breaches
-#     Note: Using public API (no key required but rate limited)
-#     """
-#     try:
-#         headers = {
-#             'User-Agent': 'OSINT-Scanner'
-#         }
-#         url = f"https://haveibeenpwned.com/api/v3/breachedaccount/{email}"
-        
-#         async with aiohttp.ClientSession() as session:
-#             async with session.get(url, headers=headers) as response:
-#                 if response.status == 200:
-#                     breaches = await response.json()
-#                     return {
-#                         "status": "breached",
-#                         "count": len(breaches),
-#                         "breaches": [
-#                             {
-#                                 "name": b.get("Name"),
-#                                 "domain": b.get("Domain"),
-#                                 "date": b.get("BreachDate"),
-#                                 "data_classes": b.get("DataClasses", [])
-#                             }
-#                             for b in breaches
-#                         ]
-#                     }
-#                 elif response.status == 404:
-#                     return {"status": "clean", "count": 0, "breaches": []}
-#                 else:
-#                     return {"status": "error", "message": f"API returned {response.status}"}
-#     except Exception as e:
-#         return {"status": "error", "message": str(e)}
-
-# # ============= Maigret Functions =============
-# def run_maigret(username: str) -> Dict[str, Any]:
-#     """
-#     Run Maigret to search for username across social media
-#     Make sure Maigret is installed: pip install maigret
-#     """
-#     try:
-#         # Run maigret command and capture output
-#         result = subprocess.run(
-#             ["maigret", username, "-f", "json"],
-#             capture_output=True,
-#             text=True,
-#             timeout=60
-#         )
-        
-#         if result.returncode == 0:
-#             # Parse JSON output
-#             lines = result.stdout.strip().split('\n')
-#             output_data = {}
-            
-#             for line in lines:
-#                 try:
-#                     data = json.loads(line)
-#                     for site, site_data in data.items():
-#                         if site_data.get("found"):
-#                             output_data[site] = {
-#                                 "found": True,
-#                                 "url": site_data.get("url_user"),
-#                                 "username": username
-#                             }
-#                         else:
-#                             output_data[site] = {
-#                                 "found": False,
-#                                 "errors": site_data.get("errors", [])
-#                             }
-#                 except json.JSONDecodeError:
-#                     continue
-            
-#             return output_data if output_data else {"status": "no_results"}
-#         else:
-#             return {"status": "error", "message": result.stderr}
-    
-#     except subprocess.TimeoutExpired:
-#         return {"status": "timeout", "message": "Maigret scan timed out"}
-#     except FileNotFoundError:
-#         return {"status": "not_installed", "message": "Maigret not found. Install with: pip install maigret"}
-#     except Exception as e:
-#         return {"status": "error", "message": str(e)}
-
-# # ============= Holehe Functions =============
-# def run_holehe(email: str) -> Dict[str, Any]:
-#     """
-#     Run Holehe to check email across social platforms
-#     Make sure Holehe is installed: pip install holehe
-#     """
-#     try:
-#         # Run holehe command
-#         result = subprocess.run(
-#             ["holehe", email],
-#             capture_output=True,
-#             text=True,
-#             timeout=60
-#         )
-        
-#         output_data = {}
-        
-#         if result.returncode == 0:
-#             # Parse holehe output (it's not JSON by default, so parse text)
-#             lines = result.stdout.strip().split('\n')
-            
-#             for line in lines:
-#                 # Look for lines with platform names and status
-#                 if "found" in line.lower() or "registered" in line.lower() or "✓" in line:
-#                     # Extract platform name and status
-#                     parts = line.split(':')
-#                     if len(parts) >= 2:
-#                         platform = parts[0].strip()
-#                         status = "found" in line.lower() or "registered" in line.lower()
-#                         output_data[platform] = status
-            
-#             return output_data if output_data else {"status": "no_results"}
-#         else:
-#             return {"status": "error", "message": result.stderr}
-    
-#     except subprocess.TimeoutExpired:
-#         return {"status": "timeout", "message": "Holehe scan timed out"}
-#     except FileNotFoundError:
-#         return {"status": "not_installed", "message": "Holehe not found. Install with: pip install holehe"}
-#     except Exception as e:
-#         return {"status": "error", "message": str(e)}
-
-# # ============= Main Endpoint =============
-# @app.post("/osint/scan", response_model=OSINTResponse)
-# async def osint_scan(request: OSINTRequest):
-#     """
-#     Perform OSINT scan using Maigret, Holehe, and HIBP
-#     """
-    
-#     if not request.email and not request.username:
-#         raise HTTPException(status_code=400, detail="Email or username required")
-    
-#     breach_data = {}
-#     maigret_results = {}
-#     holehe_results = {}
-#     summary = {
-#         "email": request.email,
-#         "username": request.username,
-#         "scan_status": "completed"
-#     }
-    
-#     # Check HIBP for email breaches
-#     if request.email:
-#         breach_data = await check_hibp_breaches(request.email)
-#         summary["hibp_breaches"] = breach_data.get("count", 0)
-    
-#     # Run Maigret for username
-#     if request.username:
-#         maigret_results = run_maigret(request.username)
-#         found_platforms = sum(1 for v in maigret_results.values() if isinstance(v, dict) and v.get("found"))
-#         summary["maigret_platforms_found"] = found_platforms
-    
-#     # Run Holehe for email
-#     if request.email:
-#         holehe_results = run_holehe(request.email)
-#         registered_platforms = sum(1 for v in holehe_results.values() if v is True)
-#         summary["holehe_platforms_registered"] = registered_platforms
-    
-#     return OSINTResponse(
-#         breach_data=breach_data,
-#         maigret_results=maigret_results,
-#         holehe_results=holehe_results,
-#         summary=summary
-#     )
-
-# # Health check endpoint
-# @app.get("/health")
-# def health_check():
-#     return {
-#         "status": "healthy",
-#         "message": "OSINT Scanner API is running",
-#         "tools": {
-#             "hibp": "Have I Been Pwned",
-#             "maigret": "Username OSINT",
-#             "holehe": "Email OSINT"
-#         }
-#     }
-
-# @app.get("/")
-# def root():
-#     return {
-#         "message": "OSINT Scanner API",
-#         "endpoints": {
-#             "post": "/osint/scan - Perform OSINT scan",
-#             "get": "/health - Health check"
-#         }
-#     }
-
-# if __name__ == "__main__":
-#     import uvicorn
-#     uvicorn.run(app, host="0.0.0.0", port=8000)
-
-
-
-
-
-
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import aiohttp
@@ -241,8 +8,20 @@ import subprocess
 import json
 import time
 from typing import Optional, Dict, Any
+from PIL import Image
+import io
+import base64
+import os
 
-app = FastAPI(title="OSINT Scanner API - Stable Build")
+# Try to import GeoCLIP, if not available, handle gracefully
+try:
+    from geoclip import GeoCLIP
+    GEOCLIP_AVAILABLE = True
+except ImportError:
+    GEOCLIP_AVAILABLE = False
+    print("Warning: GeoCLIP not installed. Install with: pip install geoclip")
+
+app = FastAPI(title="OSINT Scanner API with Geolocation")
 
 app.add_middleware(
     CORSMiddleware,
@@ -252,33 +31,115 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Initialize GeoCLIP model globally (if available)
+geoclip_model = None
+if GEOCLIP_AVAILABLE:
+    try:
+        geoclip_model = GeoCLIP()
+    except Exception as e:
+        print(f"Warning: Could not initialize GeoCLIP model: {e}")
+
 class OSINTRequest(BaseModel):
     email: Optional[str] = None
     username: Optional[str] = None
+
+class GeolocationResponse(BaseModel):
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    place: Optional[str] = None
+    confidence: Optional[float] = None
+    status: str
 
 class OSINTResponse(BaseModel):
     breach_data: Dict[str, Any]
     maigret_results: Dict[str, Any]
     holehe_results: Dict[str, Any]
     summary: Dict[str, Any]
+    geolocation: Optional[Dict[str, Any]] = None
+
+# ============= GeoCLIP Geolocation Function =============
+async def process_image_geolocation(file_content: bytes) -> Dict[str, Any]:
+    """
+    Process image and extract geolocation data using GeoCLIP
+    Returns: {latitude, longitude, place, confidence, status}
+    """
+    try:
+        if not GEOCLIP_AVAILABLE or geoclip_model is None:
+            return {
+                "status": "error",
+                "message": "GeoCLIP not available. Install with: pip install geoclip"
+            }
+        
+        # Debug: check what we received
+        print(f"DEBUG: file_content type = {type(file_content)}")
+        print(f"DEBUG: file_content is Image? {isinstance(file_content, Image.Image)}")
+        
+        # If it's already a PIL Image, don't open it again
+        if isinstance(file_content, Image.Image):
+            image = file_content
+        elif isinstance(file_content, bytes):
+            # Open image from bytes
+            image = Image.open(io.BytesIO(file_content))
+        else:
+            return {
+                "status": "error",
+                "message": f"Invalid input type: {type(file_content)}"
+            }
+        
+        # Convert to RGB if necessary (remove alpha channel for compatibility)
+        if image.mode in ('RGBA', 'LA', 'P'):
+            image = image.convert('RGB')
+        
+        # Run GeoCLIP prediction with top_k parameter
+        prediction = geoclip_model.predict(image, top_k=1)
+        
+        # Extract results - GeoCLIP returns a list of predictions
+        if prediction and len(prediction) > 0:
+            # Get the top result
+            top_result = prediction[0] if isinstance(prediction, list) else prediction
+            
+            # GeoCLIP returns: {location: str, latitude: float, longitude: float, confidence: float}
+            latitude = top_result.get('latitude') if isinstance(top_result, dict) else None
+            longitude = top_result.get('longitude') if isinstance(top_result, dict) else None
+            place = top_result.get('location') if isinstance(top_result, dict) else top_result.get('place')
+            confidence = top_result.get('confidence') if isinstance(top_result, dict) else 0.0
+            
+            return {
+                "status": "success",
+                "latitude": float(latitude) if latitude else None,
+                "longitude": float(longitude) if longitude else None,
+                "place": str(place) if place else "Unknown",
+                "confidence": float(confidence) if confidence else 0.0
+            }
+        else:
+            return {
+                "status": "error",
+                "message": "Could not extract geolocation from image"
+            }
+            
+    except Exception as e:
+        import traceback
+        print(f"DEBUG: Error in geolocation: {str(e)}")
+        print(f"DEBUG: Error type: {type(e)}")
+        print(f"DEBUG: Traceback: {traceback.format_exc()}")
+        return {
+            "status": "error",
+            "message": f"Image processing error: {str(e)}"
+        }
 
 # ============= XposedOrNot API with Rate Limit Protection =============
 async def check_breach_data(email: str) -> Dict[str, Any]:
     """
-    Check XposedOrNot for email breaches with built-in delay 
-    to respect the 2 requests per second limit.
+    Check XposedOrNot for email breaches with built-in delay
     """
-    # Small 1-second delay to ensure we don't spam the API
-    await asyncio.sleep(1) 
-    
+    await asyncio.sleep(1)
     url = f"https://api.xposedornot.com/v1/check-email/{email}"
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as response:
                 if response.status == 200:
                     data = await response.json()
-                    # Extract the list of breach names
-                    breach_list = data.get("breaches", [[]])[0] 
+                    breach_list = data.get("breaches", [[]])[0]
                     return {
                         "status": "breached",
                         "count": len(breach_list),
@@ -296,7 +157,12 @@ async def check_breach_data(email: str) -> Dict[str, Any]:
 # ============= Local OSINT Tools =============
 def run_maigret(username: str) -> Dict[str, Any]:
     try:
-        result = subprocess.run(["maigret", username, "-f", "json"], capture_output=True, text=True, timeout=60)
+        result = subprocess.run(
+            ["maigret", username, "-f", "json"],
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
         if result.returncode == 0:
             lines = result.stdout.strip().split('\n')
             output_data = {}
@@ -306,7 +172,8 @@ def run_maigret(username: str) -> Dict[str, Any]:
                     for site, site_data in data.items():
                         if site_data.get("found"):
                             output_data[site] = {"found": True, "url": site_data.get("url_user")}
-                except: continue
+                except:
+                    continue
             return output_data if output_data else {"status": "no_results"}
         return {"status": "error", "message": result.stderr}
     except Exception as e:
@@ -314,8 +181,12 @@ def run_maigret(username: str) -> Dict[str, Any]:
 
 def run_holehe(email: str) -> Dict[str, Any]:
     try:
-        # Running local tool
-        result = subprocess.run(["holehe", email], capture_output=True, text=True, timeout=60)
+        result = subprocess.run(
+            ["holehe", email],
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
         output_data = {}
         if result.returncode == 0:
             lines = result.stdout.strip().split('\n')
@@ -329,21 +200,20 @@ def run_holehe(email: str) -> Dict[str, Any]:
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-# ============= Main Endpoint =============
+# ============= Main Endpoints =============
 @app.post("/osint/scan", response_model=OSINTResponse)
 async def osint_scan(request: OSINTRequest):
+    """
+    Perform OSINT scan using Maigret, Holehe, and XposedOrNot
+    """
     if not request.email and not request.username:
         raise HTTPException(status_code=400, detail="Email or username required")
     
-    # 1. Start Maigret (Username search usually takes the longest)
+    # Run scans
     maigret_results = run_maigret(request.username) if request.username else {}
-    
-    # 2. Start Holehe (Email registration check)
     holehe_results = run_holehe(request.email) if request.email else {}
-    
-    # 3. Finally check Breach Data (XposedOrNot) with its internal delay
     breach_data = await check_breach_data(request.email) if request.email else {}
-
+    
     summary = {
         "email": request.email,
         "username": request.username,
@@ -357,8 +227,110 @@ async def osint_scan(request: OSINTRequest):
         breach_data=breach_data,
         maigret_results=maigret_results,
         holehe_results=holehe_results,
-        summary=summary
+        summary=summary,
+        geolocation=None
     )
+
+@app.post("/geolocation/analyze")
+async def analyze_geolocation(file: UploadFile = File(...)):
+    """
+    Upload image and extract geolocation data using GeoCLIP
+    Returns: {latitude, longitude, place, confidence, status}
+    """
+    try:
+        # Read file content
+        file_content = await file.read()
+        
+        # Validate file is an image
+        if not file.content_type or "image" not in file.content_type:
+            raise HTTPException(status_code=400, detail="File must be an image")
+        
+        # Process geolocation
+        geo_result = await process_image_geolocation(file_content)
+        
+        return {
+            "filename": file.filename,
+            "file_size": len(file_content),
+            "geolocation": geo_result
+        }
+    
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
+
+@app.post("/osint/scan-with-image")
+async def osint_scan_with_image(
+    email: Optional[str] = Form(None),
+    username: Optional[str] = Form(None),
+    image: Optional[UploadFile] = File(None)
+):
+    """
+    Combined endpoint: OSINT scan + Image geolocation
+    """
+    if not email and not username:
+        raise HTTPException(status_code=400, detail="Email or username required")
+    
+    # Run OSINT scans
+    maigret_results = run_maigret(username) if username else {}
+    holehe_results = run_holehe(email) if email else {}
+    breach_data = await check_breach_data(email) if email else {}
+    
+    # Process image if provided
+    geolocation = None
+    if image and image.filename:
+        file_content = await image.read()
+        # Verify it's an image by checking content type
+        if image.content_type and "image" in image.content_type:
+            geolocation = await process_image_geolocation(file_content)
+        else:
+            geolocation = {
+                "status": "error",
+                "message": "File must be an image (image/jpeg, image/png, etc.)"
+            }
+    
+    summary = {
+        "email": email,
+        "username": username,
+        "hibp_breaches": breach_data.get("count", 0) if isinstance(breach_data, dict) else 0,
+        "maigret_platforms_found": len([k for k, v in maigret_results.items() if isinstance(v, dict) and v.get("found")]),
+        "holehe_platforms_registered": len([k for k, v in holehe_results.items() if v is True]),
+        "scan_status": "completed",
+        "image_processed": geolocation is not None
+    }
+    
+    return OSINTResponse(
+        breach_data=breach_data,
+        maigret_results=maigret_results,
+        holehe_results=holehe_results,
+        summary=summary,
+        geolocation=geolocation
+    )
+
+@app.get("/health")
+def health_check():
+    return {
+        "status": "healthy",
+        "message": "OSINT Scanner API with Geolocation is running",
+        "tools": {
+            "xposedornot": "Email Breach Detection",
+            "maigret": "Username OSINT",
+            "holehe": "Email Registration Check",
+            "geoclip": "Image Geolocation" if GEOCLIP_AVAILABLE else "Not Available"
+        }
+    }
+
+@app.get("/")
+def root():
+    return {
+        "message": "OSINT Scanner API with Geolocation",
+        "endpoints": {
+            "post /osint/scan": "Perform OSINT scan (email/username)",
+            "post /geolocation/analyze": "Analyze image for geolocation",
+            "post /osint/scan-with-image": "Combined OSINT + Geolocation scan",
+            "get /health": "Health check"
+        }
+    }
 
 if __name__ == "__main__":
     import uvicorn
