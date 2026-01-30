@@ -66,12 +66,19 @@ class GeolocationResponse(BaseModel):
     confidence: Optional[float] = None
     status: str
 
+class AudioAnalysisResponse(BaseModel):
+    transcription: Optional[str] = None
+    pii_score: Optional[float] = None
+    detected_entities: Optional[List[str]] = None
+    status: str
+
 class OSINTResponse(BaseModel):
     breach_data: Dict[str, Any]
     maigret_results: Dict[str, Any]
     holehe_results: Dict[str, Any]
     summary: Dict[str, Any]
     geolocation: Optional[Dict[str, Any]] = None
+    audio_analysis: Optional[Dict[str, Any]] = None
 
 # ============= GeoCLIP Geolocation Function =============
 async def process_image_geolocation(file_content: bytes) -> Dict[str, Any]:
