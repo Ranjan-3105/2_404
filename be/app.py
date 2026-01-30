@@ -12,6 +12,10 @@ import io
 import base64
 import os
 import tempfile
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Try to import Whisper for audio transcription
 try:
