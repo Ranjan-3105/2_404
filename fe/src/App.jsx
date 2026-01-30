@@ -436,7 +436,7 @@ export default function App() {
     }
   };
 
-  const checkOSINT = async (emailToCheck, usernameToCheck, imageToUpload) => {
+  const checkOSINT = async (emailToCheck, usernameToCheck, imageToUpload, audioToUpload) => {
     if (!emailToCheck && !usernameToCheck) {
       setError('Please enter either an email or username');
       return;
@@ -455,12 +455,13 @@ export default function App() {
       let url = 'http://localhost:8000/osint/scan';
       const body = new FormData();
 
-      // Use combined endpoint if image is provided
-      if (imageToUpload) {
-        url = 'http://localhost:8000/osint/scan-with-image';
+      // Use combined endpoint if image or audio is provided
+      if (imageToUpload || audioToUpload) {
+        url = 'http://localhost:8000/osint/scan-with-media';
         body.append('email', emailToCheck || '');
         body.append('username', usernameToCheck || '');
-        body.append('image', imageToUpload);
+        if (imageToUpload) body.append('image', imageToUpload);
+        if (audioToUpload) body.append('audio', audioToUpload);
       } else {
         // Standard JSON endpoint
         const response = await fetch(url, {
@@ -489,14 +490,15 @@ export default function App() {
             maigret_results: data.maigret_results || {},
             holehe_results: data.holehe_results || {},
             summary: data.summary || {},
-            geolocation: data.geolocation || null
+            geolocation: data.geolocation || null,
+            audio_analysis: data.audio_analysis || null
           });
           setLoading(false);
         }, 500);
         return;
       }
 
-      // Image upload path
+      // Media upload path
       const response = await fetch(url, {
         method: 'POST',
         body: body
@@ -517,7 +519,8 @@ export default function App() {
           maigret_results: data.maigret_results || {},
           holehe_results: data.holehe_results || {},
           summary: data.summary || {},
-          geolocation: data.geolocation || null
+          geolocation: data.geolocation || null,
+          audio_analysis: data.audio_analysis || null
         });
         setLoading(false);
       }, 500);
