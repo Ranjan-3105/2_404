@@ -1,4 +1,3 @@
-
 // import React, { useState, useRef, useEffect } from 'react';
 // import { Search, AlertTriangle, CheckCircle, Lock, ShieldAlert, ShieldCheck, Globe } from 'lucide-react';
 
@@ -370,9 +369,11 @@ export default function App() {
   const [error, setError] = useState('');
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
+  const [audioFile, setAudioFile] = useState(null);
   const [scanProgress, setScanProgress] = useState(0);
   const [scanStatus, setScanStatus] = useState('');
-  const fileInputRef = useRef(null);
+  const imageInputRef = useRef(null);
+  const audioInputRef = useRef(null);
 
   const scanStatuses = [
     '> INITIALIZING OSINT PROTOCOL...',
