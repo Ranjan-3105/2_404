@@ -628,7 +628,7 @@ export default function App() {
               {/* Audio Upload */}
               <div className="mb-6">
                 <label className="block text-lime-600 text-sm font-bold mb-3 uppercase tracking-widest">
-                  {'>'} OR UPLOAD AUDIO (FOR PII DETECTION)
+                  {'>'} OR UPLOAD audio (FOR PII DETECTION)
                 </label>
                 <div
                   onClick={() => audioInputRef.current?.click()}
@@ -685,7 +685,7 @@ export default function App() {
               <div className="w-full h-4 bg-zinc-900 rounded-full overflow-hidden border border-lime-900">
                 <div className="h-full bg-lime-500 transition-all duration-300" style={{ width: `${scanProgress}%` }} />
               </div>
-              <p className="text-center text-lime-600 text-xs tracking-widest uppercase">Analysis in Progress...</p>
+              <p className="text-center text-lime-600 text-xs tracking-widest uppercase">analysis in Progress...</p>
             </div>
           </div>
         )}
