@@ -768,6 +768,55 @@ export default function App() {
                   </div>
                 )}
 
+                {/* Audio Analysis Results */}
+                {results.audio_analysis && (
+                  <div>
+                    <h3 className="text-orange-500 font-bold text-sm uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                      🎙 Audio Transcription & PII Detection
+                    </h3>
+                    {results.audio_analysis.status === "success" ? (
+                      <div className="space-y-4">
+                        <div className="p-4 border border-orange-900 bg-orange-950 bg-opacity-20 rounded">
+                          <p className="text-orange-700 text-[10px] uppercase font-bold mb-2">Transcription</p>
+                          <p className="text-orange-400 text-sm">{results.audio_analysis.transcription}</p>
+                        </div>
+                        <div className="p-4 border border-orange-900 bg-orange-950 bg-opacity-20 rounded">
+                          <p className="text-orange-700 text-[10px] uppercase font-bold mb-2">PII Score</p>
+                          <div className="flex items-center gap-4">
+                            <div className="flex-1">
+                              <p className={`text-2xl font-black ${results.audio_analysis.pii_score > 0.5 ? 'text-red-500' : 'text-orange-400'}`}>
+                                {(results.audio_analysis.pii_score * 100).toFixed(1)}%
+                              </p>
+                              <p className="text-orange-600 text-xs mt-1">
+                                {results.audio_analysis.pii_score > 0.7 ? 'HIGH RISK' : results.audio_analysis.pii_score > 0.4 ? 'MEDIUM RISK' : 'LOW RISK'}
+                              </p>
+                            </div>
+                            {results.audio_analysis.detected_entities && results.audio_analysis.detected_entities.length > 0 && (
+                              <div className="flex-1">
+                                <p className="text-orange-700 text-[10px] uppercase font-bold mb-2">Detected Entities</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {results.audio_analysis.detected_entities.map((entity, idx) => (
+                                    <span key={idx} className="px-2 py-1 bg-orange-950 border border-orange-700 rounded text-orange-400 text-[10px] font-bold">
+                                      {entity}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-4 border border-yellow-700 bg-yellow-950 bg-opacity-20 rounded flex items-center gap-3">
+                        <AlertTriangle className="text-yellow-500" size={20} />
+                        <p className="text-yellow-200 text-xs">
+                          {results.audio_analysis.message || 'Could not process audio file'}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Breach Data */}
                 <div>
                   <h3 className="text-lime-500 font-bold text-sm uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
