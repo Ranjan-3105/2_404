@@ -428,23 +428,24 @@ async def analyze_geolocation(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
 
-@app.post("/osint/scan-with-image")
-async def osint_scan_with_image(
+@app.post("/osint/scan-with-media")
+async def osint_scan_with_media(
     email: Optional[str] = Form(None),
     username: Optional[str] = Form(None),
-    image: Optional[UploadFile] = File(None)
+    image: Optional[UploadFile] = File(None),
+    audio: Optional[UploadFile] = File(None)
 ):
     """
-    Combined endpoint: OSINT scan + Image geolocation
+    Combined endpoint: OSINT scan + Image geolocation + Audio transcription & PII analysis
     """
     if not email and not username:
         raise HTTPException(status_code=400, detail="Email or username required")
-    
+
     # Run OSINT scans
     maigret_results = run_maigret(username) if username else {}
     holehe_results = run_holehe(email) if email else {}
     breach_data = await check_breach_data(email) if email else {}
-    
+
     # Process image if provided
     geolocation = None
     if image and image.filename:
@@ -457,7 +458,20 @@ async def osint_scan_with_image(
                 "status": "error",
                 "message": "File must be an image (image/jpeg, image/png, etc.)"
             }
-    
+
+    # Process audio if provided
+    audio_analysis = None
+    if audio and audio.filename:
+        file_content = await audio.read()
+        # Verify it's an audio file by checking content type
+        if audio.content_type and "audio" in audio.content_type:
+            audio_analysis = await process_audio_for_pii(file_content)
+        else:
+            audio_analysis = {
+                "status": "error",
+                "message": "File must be an audio file (audio/mp3, audio/wav, etc.)"
+            }
+
     summary = {
         "email": email,
         "username": username,
@@ -465,15 +479,17 @@ async def osint_scan_with_image(
         "maigret_platforms_found": len([k for k, v in maigret_results.items() if isinstance(v, dict) and v.get("found")]),
         "holehe_platforms_registered": len([k for k, v in holehe_results.items() if v is True]),
         "scan_status": "completed",
-        "image_processed": geolocation is not None
+        "image_processed": geolocation is not None,
+        "audio_processed": audio_analysis is not None
     }
-    
+
     return OSINTResponse(
         breach_data=breach_data,
         maigret_results=maigret_results,
         holehe_results=holehe_results,
         summary=summary,
-        geolocation=geolocation
+        geolocation=geolocation,
+        audio_analysis=audio_analysis
     )
 
 @app.get("/health")
