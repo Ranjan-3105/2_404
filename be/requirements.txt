@@ -6,3 +6,5 @@ requests==2.31.0
 maigret==0.3.14
 holehe==0.4.5
 python-multipart==0.0.6
+openai-whisper==20240314
+Pillow==10.1.0
