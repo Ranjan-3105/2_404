@@ -595,11 +595,11 @@ export default function App() {
                   {'>'} OR UPLOAD SCREENSHOT (FOR GEOLOCATION)
                 </label>
                 <div
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => imageInputRef.current?.click()}
                   className="border-2 border-dashed border-lime-600 border-opacity-40 rounded p-6 cursor-pointer transition-all duration-300 hover:border-opacity-100 bg-black"
                 >
                   <input
-                    ref={fileInputRef}
+                    ref={imageInputRef}
                     type="file"
                     accept="image/*"
                     onChange={handleImageUpload}
@@ -619,6 +619,35 @@ export default function App() {
                             className="mt-3 max-h-24 mx-auto rounded border border-lime-600 border-opacity-30"
                           />
                         )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Audio Upload */}
+              <div className="mb-6">
+                <label className="block text-lime-600 text-sm font-bold mb-3 uppercase tracking-widest">
+                  {'>'} OR UPLOAD AUDIO (FOR PII DETECTION)
+                </label>
+                <div
+                  onClick={() => audioInputRef.current?.click()}
+                  className="border-2 border-dashed border-lime-600 border-opacity-40 rounded p-6 cursor-pointer transition-all duration-300 hover:border-opacity-100 bg-black"
+                >
+                  <input
+                    ref={audioInputRef}
+                    type="file"
+                    accept="audio/*"
+                    onChange={handleAudioUpload}
+                    className="hidden"
+                  />
+                  <div className="text-center">
+                    <Upload className="mx-auto mb-2 text-lime-700" size={24} />
+                    <p className="text-lime-600 text-sm">drag & drop or click to upload audio</p>
+                    {audioFile && (
+                      <div className="mt-3">
+                        <p className="text-lime-400 text-xs font-bold animate-pulse">✓ FILE ATTACHED</p>
+                        <p className="text-lime-700 text-xs mt-1">{audioFile.name}</p>
                       </div>
                     )}
                   </div>
