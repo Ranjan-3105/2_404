@@ -143,6 +143,152 @@ async def process_image_geolocation(file_content: bytes) -> Dict[str, Any]:
             "message": f"Image processing error: {str(e)}"
         }
 
+# ============= Audio Processing with Whisper & Nyckel PII Detection =============
+async def process_audio_for_pii(file_content: bytes) -> Dict[str, Any]:
+    """
+    Process audio file: transcribe with Whisper, analyze PII with Nyckel
+    Returns: {transcription, pii_score, detected_entities, status}
+    """
+    try:
+        if not WHISPER_AVAILABLE or whisper_model is None:
+            return {
+                "status": "error",
+                "message": "Whisper not available. Install with: pip install openai-whisper"
+            }
+
+        # Save audio to temporary file for Whisper
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as tmp_file:
+            tmp_file.write(file_content)
+            tmp_path = tmp_file.name
+
+        try:
+            # Transcribe audio with Whisper
+            result = whisper_model.transcribe(tmp_path)
+            transcription = result.get('text', '')
+
+            if not transcription:
+                return {
+                    "status": "error",
+                    "message": "Could not transcribe audio"
+                }
+
+            # Analyze PII using Nyckel API
+            pii_score = 0.0
+            detected_entities = []
+
+            try:
+                pii_result = await analyze_pii_with_nyckel(transcription)
+                pii_score = pii_result.get('score', 0.0)
+                detected_entities = pii_result.get('entities', [])
+            except Exception as e:
+                print(f"Warning: Nyckel PII analysis failed: {str(e)}")
+                # Continue without PII analysis rather than failing completely
+                pii_result = await analyze_pii_simple(transcription)
+                pii_score = pii_result.get('score', 0.0)
+                detected_entities = pii_result.get('entities', [])
+
+            return {
+                "status": "success",
+                "transcription": transcription,
+                "pii_score": pii_score,
+                "detected_entities": detected_entities
+            }
+        finally:
+            # Clean up temporary file
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+
+    except Exception as e:
+        import traceback
+        print(f"DEBUG: Error in audio processing: {str(e)}")
+        print(f"DEBUG: Traceback: {traceback.format_exc()}")
+        return {
+            "status": "error",
+            "message": f"Audio processing error: {str(e)}"
+        }
+
+async def analyze_pii_with_nyckel(text: str) -> Dict[str, Any]:
+    """
+    Analyze text for PII using Nyckel API
+    Requires NYCKEL_API_KEY environment variable
+    """
+    api_key = os.getenv('NYCKEL_API_KEY')
+    if not api_key:
+        raise Exception("NYCKEL_API_KEY not set")
+
+    try:
+        # Nyckel API endpoint for PII detection
+        url = "https://api.nyckel.com/v1/functions/pl0ygn66-pii-detection/invoke"
+
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "data": text
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload, headers=headers, timeout=30) as response:
+                if response.status == 200:
+                    data = await response.json()
+
+                    # Extract PII score from Nyckel response
+                    # Nyckel returns a confidence score for PII detection
+                    pii_score = data.get('confidence', 0.0)
+
+                    # Parse detected PII entities if available
+                    detected_entities = []
+                    if 'data' in data and isinstance(data['data'], dict):
+                        for entity_type, entities in data['data'].items():
+                            if entities:
+                                detected_entities.append(f"{entity_type}")
+
+                    return {
+                        "score": pii_score,
+                        "entities": detected_entities
+                    }
+                else:
+                    error_msg = await response.text()
+                    raise Exception(f"Nyckel API error: {response.status} - {error_msg}")
+    except Exception as e:
+        print(f"Nyckel API error: {str(e)}")
+        raise
+
+async def analyze_pii_simple(text: str) -> Dict[str, Any]:
+    """
+    Simple PII detection fallback when Nyckel is unavailable
+    Uses pattern matching for common PII
+    """
+    import re
+
+    pii_patterns = {
+        'emails': r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
+        'phones': r'\b(?:\+?1[-.\s]?)?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})\b',
+        'credit_cards': r'\b(?:\d{4}[-\s]?){3}\d{4}\b',
+        'ssn': r'\b\d{3}-\d{2}-\d{4}\b',
+        'dates': r'\b(?:0?[1-9]|1[0-2])[/-](?:0?[1-9]|[12][0-9]|3[01])[/-](?:\d{4}|\d{2})\b'
+    }
+
+    detected_entities = []
+    entity_count = 0
+
+    for entity_type, pattern in pii_patterns.items():
+        matches = re.findall(pattern, text)
+        if matches:
+            detected_entities.append(entity_type)
+            entity_count += len(matches) if isinstance(matches[0], str) and not isinstance(matches[0], tuple) else len(matches)
+
+    # Calculate simple PII score (0-1) based on detected entities
+    max_entities = 10
+    pii_score = min(entity_count / max_entities, 1.0)
+
+    return {
+        "score": pii_score,
+        "entities": detected_entities
+    }
+
 # ============= XposedOrNot API with Rate Limit Protection =============
 async def check_breach_data(email: str) -> Dict[str, Any]:
     """
