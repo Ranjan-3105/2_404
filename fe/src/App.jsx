@@ -495,12 +495,12 @@ export default function App() {
     setResults(null);
 
     try {
-      let url = 'http://localhost:8000/osint/scan';
+      let url = OSINT_ENDPOINTS.scan;
       const body = new FormData();
 
       // Use combined endpoint if image or audio is provided
       if (imageToUpload || audioToUpload) {
-        url = 'http://localhost:8000/osint/scan-with-media';
+        url = OSINT_ENDPOINTS.scanWithMedia;
         body.append('email', emailToCheck || '');
         body.append('username', usernameToCheck || '');
         if (imageToUpload) body.append('image', imageToUpload);
@@ -568,7 +568,16 @@ export default function App() {
         setLoading(false);
       }, 500);
     } catch (err) {
-      setError(err.message || 'Connection lost. Check if backend is running.');
+      // Provide detailed error message
+      let errorMsg = 'Connection lost. ';
+
+      if (err.message.includes('Failed to fetch')) {
+        errorMsg += `Backend server not reachable at ${OSINT_ENDPOINTS.scan}. Make sure the backend is running.`;
+      } else {
+        errorMsg += err.message || 'Check if backend is running.';
+      }
+
+      setError(errorMsg);
       setLoading(false);
     }
   };
