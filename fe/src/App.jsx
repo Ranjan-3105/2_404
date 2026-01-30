@@ -619,6 +619,8 @@ export default function App() {
                 </label>
                 <div
                   onClick={() => imageInputRef.current?.click()}
+                  onDragOver={handleImageDragOver}
+                  onDrop={handleImageDrop}
                   className="border-2 border-dashed border-lime-600 border-opacity-40 rounded p-6 cursor-pointer transition-all duration-300 hover:border-opacity-100 bg-black"
                 >
                   <input
