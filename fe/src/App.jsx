@@ -1,4 +1,3 @@
-
 // import React, { useState, useRef, useEffect } from 'react';
 // import { Search, AlertTriangle, CheckCircle, Lock, ShieldAlert, ShieldCheck, Globe } from 'lucide-react';
 
@@ -370,9 +369,11 @@ export default function App() {
   const [error, setError] = useState('');
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
+  const [audioFile, setAudioFile] = useState(null);
   const [scanProgress, setScanProgress] = useState(0);
   const [scanStatus, setScanStatus] = useState('');
-  const fileInputRef = useRef(null);
+  const imageInputRef = useRef(null);
+  const audioInputRef = useRef(null);
 
   const scanStatuses = [
     '> INITIALIZING OSINT PROTOCOL...',
@@ -413,7 +414,7 @@ export default function App() {
         return;
       }
       setImageFile(file);
-      
+
       // Create preview
       const reader = new FileReader();
       reader.onload = (event) => {
@@ -423,7 +424,19 @@ export default function App() {
     }
   };
 
-  const checkOSINT = async (emailToCheck, usernameToCheck, imageToUpload) => {
+  const handleAudioUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (!file.type.startsWith('audio/')) {
+        setError('Please select a valid audio file');
+        return;
+      }
+      setAudioFile(file);
+      setError('');
+    }
+  };
+
+  const checkOSINT = async (emailToCheck, usernameToCheck, imageToUpload, audioToUpload) => {
     if (!emailToCheck && !usernameToCheck) {
       setError('Please enter either an email or username');
       return;
@@ -442,12 +455,13 @@ export default function App() {
       let url = 'http://localhost:8000/osint/scan';
       const body = new FormData();
 
-      // Use combined endpoint if image is provided
-      if (imageToUpload) {
-        url = 'http://localhost:8000/osint/scan-with-image';
+      // Use combined endpoint if image or audio is provided
+      if (imageToUpload || audioToUpload) {
+        url = 'http://localhost:8000/osint/scan-with-media';
         body.append('email', emailToCheck || '');
         body.append('username', usernameToCheck || '');
-        body.append('image', imageToUpload);
+        if (imageToUpload) body.append('image', imageToUpload);
+        if (audioToUpload) body.append('audio', audioToUpload);
       } else {
         // Standard JSON endpoint
         const response = await fetch(url, {
@@ -476,14 +490,15 @@ export default function App() {
             maigret_results: data.maigret_results || {},
             holehe_results: data.holehe_results || {},
             summary: data.summary || {},
-            geolocation: data.geolocation || null
+            geolocation: data.geolocation || null,
+            audio_analysis: data.audio_analysis || null
           });
           setLoading(false);
         }, 500);
         return;
       }
 
-      // Image upload path
+      // Media upload path
       const response = await fetch(url, {
         method: 'POST',
         body: body
@@ -504,7 +519,8 @@ export default function App() {
           maigret_results: data.maigret_results || {},
           holehe_results: data.holehe_results || {},
           summary: data.summary || {},
-          geolocation: data.geolocation || null
+          geolocation: data.geolocation || null,
+          audio_analysis: data.audio_analysis || null
         });
         setLoading(false);
       }, 500);
@@ -516,7 +532,7 @@ export default function App() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    checkOSINT(email, username, imageFile);
+    checkOSINT(email, username, imageFile, audioFile);
   };
 
   return (
@@ -579,11 +595,11 @@ export default function App() {
                   {'>'} OR UPLOAD SCREENSHOT (FOR GEOLOCATION)
                 </label>
                 <div
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => imageInputRef.current?.click()}
                   className="border-2 border-dashed border-lime-600 border-opacity-40 rounded p-6 cursor-pointer transition-all duration-300 hover:border-opacity-100 bg-black"
                 >
                   <input
-                    ref={fileInputRef}
+                    ref={imageInputRef}
                     type="file"
                     accept="image/*"
                     onChange={handleImageUpload}
@@ -603,6 +619,35 @@ export default function App() {
                             className="mt-3 max-h-24 mx-auto rounded border border-lime-600 border-opacity-30"
                           />
                         )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Audio Upload */}
+              <div className="mb-6">
+                <label className="block text-lime-600 text-sm font-bold mb-3 uppercase tracking-widest">
+                  {'>'} OR UPLOAD AUDIO (FOR PII DETECTION)
+                </label>
+                <div
+                  onClick={() => audioInputRef.current?.click()}
+                  className="border-2 border-dashed border-lime-600 border-opacity-40 rounded p-6 cursor-pointer transition-all duration-300 hover:border-opacity-100 bg-black"
+                >
+                  <input
+                    ref={audioInputRef}
+                    type="file"
+                    accept="audio/*"
+                    onChange={handleAudioUpload}
+                    className="hidden"
+                  />
+                  <div className="text-center">
+                    <Upload className="mx-auto mb-2 text-lime-700" size={24} />
+                    <p className="text-lime-600 text-sm">drag & drop or click to upload audio</p>
+                    {audioFile && (
+                      <div className="mt-3">
+                        <p className="text-lime-400 text-xs font-bold animate-pulse">✓ FILE ATTACHED</p>
+                        <p className="text-lime-700 text-xs mt-1">{audioFile.name}</p>
                       </div>
                     )}
                   </div>
@@ -723,6 +768,55 @@ export default function App() {
                   </div>
                 )}
 
+                {/* Audio Analysis Results */}
+                {results.audio_analysis && (
+                  <div>
+                    <h3 className="text-orange-500 font-bold text-sm uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                      🎙 Audio Transcription & PII Detection
+                    </h3>
+                    {results.audio_analysis.status === "success" ? (
+                      <div className="space-y-4">
+                        <div className="p-4 border border-orange-900 bg-orange-950 bg-opacity-20 rounded">
+                          <p className="text-orange-700 text-[10px] uppercase font-bold mb-2">Transcription</p>
+                          <p className="text-orange-400 text-sm">{results.audio_analysis.transcription}</p>
+                        </div>
+                        <div className="p-4 border border-orange-900 bg-orange-950 bg-opacity-20 rounded">
+                          <p className="text-orange-700 text-[10px] uppercase font-bold mb-2">PII Score</p>
+                          <div className="flex items-center gap-4">
+                            <div className="flex-1">
+                              <p className={`text-2xl font-black ${results.audio_analysis.pii_score > 0.5 ? 'text-red-500' : 'text-orange-400'}`}>
+                                {(results.audio_analysis.pii_score * 100).toFixed(1)}%
+                              </p>
+                              <p className="text-orange-600 text-xs mt-1">
+                                {results.audio_analysis.pii_score > 0.7 ? 'HIGH RISK' : results.audio_analysis.pii_score > 0.4 ? 'MEDIUM RISK' : 'LOW RISK'}
+                              </p>
+                            </div>
+                            {results.audio_analysis.detected_entities && results.audio_analysis.detected_entities.length > 0 && (
+                              <div className="flex-1">
+                                <p className="text-orange-700 text-[10px] uppercase font-bold mb-2">Detected Entities</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {results.audio_analysis.detected_entities.map((entity, idx) => (
+                                    <span key={idx} className="px-2 py-1 bg-orange-950 border border-orange-700 rounded text-orange-400 text-[10px] font-bold">
+                                      {entity}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-4 border border-yellow-700 bg-yellow-950 bg-opacity-20 rounded flex items-center gap-3">
+                        <AlertTriangle className="text-yellow-500" size={20} />
+                        <p className="text-yellow-200 text-xs">
+                          {results.audio_analysis.message || 'Could not process audio file'}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Breach Data */}
                 <div>
                   <h3 className="text-lime-500 font-bold text-sm uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
@@ -812,6 +906,7 @@ export default function App() {
                   setUsername('');
                   setImageFile(null);
                   setImagePreview(null);
+                  setAudioFile(null);
                   setError('');
                 }}
                 className="px-8 py-2 border border-lime-500 text-lime-500 text-xs font-bold uppercase tracking-[0.3em] hover:bg-lime-500 hover:text-black transition-all duration-300"

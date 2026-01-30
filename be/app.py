@@ -1,4 +1,3 @@
-
 from fastapi import FastAPI, HTTPException, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -7,11 +6,24 @@ import asyncio
 import subprocess
 import json
 import time
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from PIL import Image
 import io
 import base64
 import os
+import tempfile
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Try to import Whisper for audio transcription
+try:
+    import whisper
+    WHISPER_AVAILABLE = True
+except ImportError:
+    WHISPER_AVAILABLE = False
+    print("Warning: Whisper not installed. Install with: pip install openai-whisper")
 
 # Try to import GeoCLIP, if not available, handle gracefully
 try:
@@ -39,6 +51,14 @@ if GEOCLIP_AVAILABLE:
     except Exception as e:
         print(f"Warning: Could not initialize GeoCLIP model: {e}")
 
+# Initialize Whisper model globally (if available)
+whisper_model = None
+if WHISPER_AVAILABLE:
+    try:
+        whisper_model = whisper.load_model("base")
+    except Exception as e:
+        print(f"Warning: Could not initialize Whisper model: {e}")
+
 class OSINTRequest(BaseModel):
     email: Optional[str] = None
     username: Optional[str] = None
@@ -50,12 +70,19 @@ class GeolocationResponse(BaseModel):
     confidence: Optional[float] = None
     status: str
 
+class AudioAnalysisResponse(BaseModel):
+    transcription: Optional[str] = None
+    pii_score: Optional[float] = None
+    detected_entities: Optional[List[str]] = None
+    status: str
+
 class OSINTResponse(BaseModel):
     breach_data: Dict[str, Any]
     maigret_results: Dict[str, Any]
     holehe_results: Dict[str, Any]
     summary: Dict[str, Any]
     geolocation: Optional[Dict[str, Any]] = None
+    audio_analysis: Optional[Dict[str, Any]] = None
 
 # ============= GeoCLIP Geolocation Function =============
 async def process_image_geolocation(file_content: bytes) -> Dict[str, Any]:
@@ -126,6 +153,152 @@ async def process_image_geolocation(file_content: bytes) -> Dict[str, Any]:
             "status": "error",
             "message": f"Image processing error: {str(e)}"
         }
+
+# ============= Audio Processing with Whisper & Nyckel PII Detection =============
+async def process_audio_for_pii(file_content: bytes) -> Dict[str, Any]:
+    """
+    Process audio file: transcribe with Whisper, analyze PII with Nyckel
+    Returns: {transcription, pii_score, detected_entities, status}
+    """
+    try:
+        if not WHISPER_AVAILABLE or whisper_model is None:
+            return {
+                "status": "error",
+                "message": "Whisper not available. Install with: pip install openai-whisper"
+            }
+
+        # Save audio to temporary file for Whisper
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as tmp_file:
+            tmp_file.write(file_content)
+            tmp_path = tmp_file.name
+
+        try:
+            # Transcribe audio with Whisper
+            result = whisper_model.transcribe(tmp_path)
+            transcription = result.get('text', '')
+
+            if not transcription:
+                return {
+                    "status": "error",
+                    "message": "Could not transcribe audio"
+                }
+
+            # Analyze PII using Nyckel API
+            pii_score = 0.0
+            detected_entities = []
+
+            try:
+                pii_result = await analyze_pii_with_nyckel(transcription)
+                pii_score = pii_result.get('score', 0.0)
+                detected_entities = pii_result.get('entities', [])
+            except Exception as e:
+                print(f"Warning: Nyckel PII analysis failed: {str(e)}")
+                # Continue without PII analysis rather than failing completely
+                pii_result = await analyze_pii_simple(transcription)
+                pii_score = pii_result.get('score', 0.0)
+                detected_entities = pii_result.get('entities', [])
+
+            return {
+                "status": "success",
+                "transcription": transcription,
+                "pii_score": pii_score,
+                "detected_entities": detected_entities
+            }
+        finally:
+            # Clean up temporary file
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+
+    except Exception as e:
+        import traceback
+        print(f"DEBUG: Error in audio processing: {str(e)}")
+        print(f"DEBUG: Traceback: {traceback.format_exc()}")
+        return {
+            "status": "error",
+            "message": f"Audio processing error: {str(e)}"
+        }
+
+async def analyze_pii_with_nyckel(text: str) -> Dict[str, Any]:
+    """
+    Analyze text for PII using Nyckel API
+    Requires NYCKEL_API_KEY environment variable
+    """
+    api_key = os.getenv('NYCKEL_API_KEY')
+    if not api_key:
+        raise Exception("NYCKEL_API_KEY not set")
+
+    try:
+        # Nyckel API endpoint for PII detection
+        url = "https://api.nyckel.com/v1/functions/pl0ygn66-pii-detection/invoke"
+
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "data": text
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload, headers=headers, timeout=30) as response:
+                if response.status == 200:
+                    data = await response.json()
+
+                    # Extract PII score from Nyckel response
+                    # Nyckel returns a confidence score for PII detection
+                    pii_score = data.get('confidence', 0.0)
+
+                    # Parse detected PII entities if available
+                    detected_entities = []
+                    if 'data' in data and isinstance(data['data'], dict):
+                        for entity_type, entities in data['data'].items():
+                            if entities:
+                                detected_entities.append(f"{entity_type}")
+
+                    return {
+                        "score": pii_score,
+                        "entities": detected_entities
+                    }
+                else:
+                    error_msg = await response.text()
+                    raise Exception(f"Nyckel API error: {response.status} - {error_msg}")
+    except Exception as e:
+        print(f"Nyckel API error: {str(e)}")
+        raise
+
+async def analyze_pii_simple(text: str) -> Dict[str, Any]:
+    """
+    Simple PII detection fallback when Nyckel is unavailable
+    Uses pattern matching for common PII
+    """
+    import re
+
+    pii_patterns = {
+        'emails': r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
+        'phones': r'\b(?:\+?1[-.\s]?)?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})\b',
+        'credit_cards': r'\b(?:\d{4}[-\s]?){3}\d{4}\b',
+        'ssn': r'\b\d{3}-\d{2}-\d{4}\b',
+        'dates': r'\b(?:0?[1-9]|1[0-2])[/-](?:0?[1-9]|[12][0-9]|3[01])[/-](?:\d{4}|\d{2})\b'
+    }
+
+    detected_entities = []
+    entity_count = 0
+
+    for entity_type, pattern in pii_patterns.items():
+        matches = re.findall(pattern, text)
+        if matches:
+            detected_entities.append(entity_type)
+            entity_count += len(matches) if isinstance(matches[0], str) and not isinstance(matches[0], tuple) else len(matches)
+
+    # Calculate simple PII score (0-1) based on detected entities
+    max_entities = 10
+    pii_score = min(entity_count / max_entities, 1.0)
+
+    return {
+        "score": pii_score,
+        "entities": detected_entities
+    }
 
 # ============= XposedOrNot API with Rate Limit Protection =============
 async def check_breach_data(email: str) -> Dict[str, Any]:
@@ -259,23 +432,24 @@ async def analyze_geolocation(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
 
-@app.post("/osint/scan-with-image")
-async def osint_scan_with_image(
+@app.post("/osint/scan-with-media")
+async def osint_scan_with_media(
     email: Optional[str] = Form(None),
     username: Optional[str] = Form(None),
-    image: Optional[UploadFile] = File(None)
+    image: Optional[UploadFile] = File(None),
+    audio: Optional[UploadFile] = File(None)
 ):
     """
-    Combined endpoint: OSINT scan + Image geolocation
+    Combined endpoint: OSINT scan + Image geolocation + Audio transcription & PII analysis
     """
     if not email and not username:
         raise HTTPException(status_code=400, detail="Email or username required")
-    
+
     # Run OSINT scans
     maigret_results = run_maigret(username) if username else {}
     holehe_results = run_holehe(email) if email else {}
     breach_data = await check_breach_data(email) if email else {}
-    
+
     # Process image if provided
     geolocation = None
     if image and image.filename:
@@ -288,7 +462,20 @@ async def osint_scan_with_image(
                 "status": "error",
                 "message": "File must be an image (image/jpeg, image/png, etc.)"
             }
-    
+
+    # Process audio if provided
+    audio_analysis = None
+    if audio and audio.filename:
+        file_content = await audio.read()
+        # Verify it's an audio file by checking content type
+        if audio.content_type and "audio" in audio.content_type:
+            audio_analysis = await process_audio_for_pii(file_content)
+        else:
+            audio_analysis = {
+                "status": "error",
+                "message": "File must be an audio file (audio/mp3, audio/wav, etc.)"
+            }
+
     summary = {
         "email": email,
         "username": username,
@@ -296,38 +483,42 @@ async def osint_scan_with_image(
         "maigret_platforms_found": len([k for k, v in maigret_results.items() if isinstance(v, dict) and v.get("found")]),
         "holehe_platforms_registered": len([k for k, v in holehe_results.items() if v is True]),
         "scan_status": "completed",
-        "image_processed": geolocation is not None
+        "image_processed": geolocation is not None,
+        "audio_processed": audio_analysis is not None
     }
-    
+
     return OSINTResponse(
         breach_data=breach_data,
         maigret_results=maigret_results,
         holehe_results=holehe_results,
         summary=summary,
-        geolocation=geolocation
+        geolocation=geolocation,
+        audio_analysis=audio_analysis
     )
 
 @app.get("/health")
 def health_check():
     return {
         "status": "healthy",
-        "message": "OSINT Scanner API with Geolocation is running",
+        "message": "OSINT Scanner API with Geolocation & Audio Processing",
         "tools": {
             "xposedornot": "Email Breach Detection",
             "maigret": "Username OSINT",
             "holehe": "Email Registration Check",
-            "geoclip": "Image Geolocation" if GEOCLIP_AVAILABLE else "Not Available"
+            "geoclip": "Image Geolocation" if GEOCLIP_AVAILABLE else "Not Available",
+            "whisper": "Audio Transcription" if WHISPER_AVAILABLE else "Not Available",
+            "nyckel": "PII Detection"
         }
     }
 
 @app.get("/")
 def root():
     return {
-        "message": "OSINT Scanner API with Geolocation",
+        "message": "OSINT Scanner API with Geolocation & Audio Processing",
         "endpoints": {
             "post /osint/scan": "Perform OSINT scan (email/username)",
             "post /geolocation/analyze": "Analyze image for geolocation",
-            "post /osint/scan-with-image": "Combined OSINT + Geolocation scan",
+            "post /osint/scan-with-media": "Combined OSINT + Geolocation + Audio scan",
             "get /health": "Health check"
         }
     }
