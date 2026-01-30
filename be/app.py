@@ -496,23 +496,25 @@ async def osint_scan_with_media(
 def health_check():
     return {
         "status": "healthy",
-        "message": "OSINT Scanner API with Geolocation is running",
+        "message": "OSINT Scanner API with Geolocation & Audio Processing",
         "tools": {
             "xposedornot": "Email Breach Detection",
             "maigret": "Username OSINT",
             "holehe": "Email Registration Check",
-            "geoclip": "Image Geolocation" if GEOCLIP_AVAILABLE else "Not Available"
+            "geoclip": "Image Geolocation" if GEOCLIP_AVAILABLE else "Not Available",
+            "whisper": "Audio Transcription" if WHISPER_AVAILABLE else "Not Available",
+            "nyckel": "PII Detection"
         }
     }
 
 @app.get("/")
 def root():
     return {
-        "message": "OSINT Scanner API with Geolocation",
+        "message": "OSINT Scanner API with Geolocation & Audio Processing",
         "endpoints": {
             "post /osint/scan": "Perform OSINT scan (email/username)",
             "post /geolocation/analyze": "Analyze image for geolocation",
-            "post /osint/scan-with-image": "Combined OSINT + Geolocation scan",
+            "post /osint/scan-with-media": "Combined OSINT + Geolocation + Audio scan",
             "get /health": "Health check"
         }
     }
