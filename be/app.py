@@ -47,6 +47,14 @@ if GEOCLIP_AVAILABLE:
     except Exception as e:
         print(f"Warning: Could not initialize GeoCLIP model: {e}")
 
+# Initialize Whisper model globally (if available)
+whisper_model = None
+if WHISPER_AVAILABLE:
+    try:
+        whisper_model = whisper.load_model("base")
+    except Exception as e:
+        print(f"Warning: Could not initialize Whisper model: {e}")
+
 class OSINTRequest(BaseModel):
     email: Optional[str] = None
     username: Optional[str] = None
