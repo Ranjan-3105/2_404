@@ -532,7 +532,7 @@ export default function App() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    checkOSINT(email, username, imageFile);
+    checkOSINT(email, username, imageFile, audioFile);
   };
 
   return (
