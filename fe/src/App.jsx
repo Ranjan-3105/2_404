@@ -767,7 +767,7 @@ export default function App() {
 
               <div className="p-6 space-y-8">
                 {/* Summary Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div className="p-4 border border-lime-900 rounded bg-zinc-900 bg-opacity-20">
                     <p className="text-lime-700 text-[10px] uppercase font-bold">Breaches Found</p>
                     <p className={`text-2xl font-black ${results.summary?.hibp_breaches > 0 ? 'text-red-500' : 'text-lime-500'}`}>
@@ -784,6 +784,33 @@ export default function App() {
                     <p className="text-lime-700 text-[10px] uppercase font-bold">Registered Accounts</p>
                     <p className="text-2xl font-black text-lime-500">
                       {results.summary?.holehe_platforms_registered || 0}
+                    </p>
+                  </div>
+                  <div className={`p-4 border rounded bg-zinc-900 bg-opacity-20 ${
+                    results.risk_label === 'CRITICAL' ? 'border-red-900' :
+                    results.risk_label === 'HIGH' ? 'border-orange-900' :
+                    results.risk_label === 'MEDIUM' ? 'border-yellow-900' :
+                    results.risk_label === 'LOW' ? 'border-lime-900' :
+                    'border-lime-900'
+                  }`}>
+                    <p className="text-lime-700 text-[10px] uppercase font-bold">Risk Score</p>
+                    <p className={`text-2xl font-black ${
+                      results.risk_label === 'CRITICAL' ? 'text-red-500' :
+                      results.risk_label === 'HIGH' ? 'text-orange-500' :
+                      results.risk_label === 'MEDIUM' ? 'text-yellow-500' :
+                      results.risk_label === 'LOW' ? 'text-lime-500' :
+                      'text-lime-500'
+                    }`}>
+                      {(results.risk_score || 0).toFixed(1)}
+                    </p>
+                    <p className={`text-xs uppercase font-bold mt-2 ${
+                      results.risk_label === 'CRITICAL' ? 'text-red-400' :
+                      results.risk_label === 'HIGH' ? 'text-orange-400' :
+                      results.risk_label === 'MEDIUM' ? 'text-yellow-400' :
+                      results.risk_label === 'LOW' ? 'text-lime-400' :
+                      'text-lime-400'
+                    }`}>
+                      {results.risk_label || 'UNKNOWN'}
                     </p>
                   </div>
                 </div>
