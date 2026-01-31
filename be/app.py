@@ -302,6 +302,65 @@ async def analyze_pii_simple(text: str) -> Dict[str, Any]:
         "entities": detected_entities
     }
 
+# ============= Risk Score Calculation =============
+def calculate_risk_score(
+    breach_count: int,
+    username_platforms: int,
+    pii_score: float = 0.0,
+    geolocation_confidence: float = 0.0
+) -> tuple[float, str]:
+    """
+    Calculate risk score (0-100) based on various factors:
+    - Email breaches: 1-10: +10, 11-30: +15, 30+: +50
+    - Username reuse: 1-10: +5, 11-20: +15, 20+: +40
+    - PII score: normalized (0-10 points)
+    - Geolocation confidence: normalized (0-10 points)
+
+    Returns: (risk_score, risk_label)
+    """
+    total_score = 0.0
+
+    # Breach risk scoring (max 50 points)
+    if breach_count >= 30:
+        total_score += 50
+    elif breach_count >= 11:
+        total_score += 15
+    elif breach_count >= 1:
+        total_score += 10
+
+    # Username reuse risk scoring (max 40 points)
+    if username_platforms >= 20:
+        total_score += 40
+    elif username_platforms >= 11:
+        total_score += 15
+    elif username_platforms >= 1:
+        total_score += 5
+
+    # PII detection risk (max 10 points)
+    pii_points = min(pii_score * 10, 10.0)
+    total_score += pii_points
+
+    # Geolocation confidence bonus (max 10 points) - higher confidence = more risk (more data exposed)
+    geo_points = min(geolocation_confidence * 10, 10.0)
+    total_score += geo_points
+
+    # Ensure score is between 0-100
+    total_score = min(max(total_score, 0.0), 100.0)
+
+    # Determine risk label
+    if total_score >= 80:
+        risk_label = "CRITICAL"
+    elif total_score >= 60:
+        risk_label = "HIGH"
+    elif total_score >= 40:
+        risk_label = "MEDIUM"
+    elif total_score >= 20:
+        risk_label = "LOW"
+    else:
+        risk_label = "MINIMAL"
+
+    return total_score, risk_label
+
 # ============= XposedOrNot API with Rate Limit Protection =============
 async def check_breach_data(email: str) -> Dict[str, Any]:
     """
