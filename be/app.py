@@ -392,26 +392,43 @@ async def check_breach_data(email: str) -> Dict[str, Any]:
 def run_maigret(username: str) -> Dict[str, Any]:
     try:
         result = subprocess.run(
-            ["maigret", username, "-f", "json"],
+            ["maigret", username, "-f", "json", "-o", "/tmp/maigret_output"],
             capture_output=True,
             text=True,
-            timeout=60
+            timeout=120
         )
-        if result.returncode == 0:
-            lines = result.stdout.strip().split('\n')
-            output_data = {}
-            for line in lines:
+
+        # Read the JSON output file
+        output_data = {}
+        try:
+            with open("/tmp/maigret_output.json", "r") as f:
+                data = json.load(f)
+                for site, site_data in data.items():
+                    if isinstance(site_data, dict) and site_data.get("found"):
+                        output_data[site] = {
+                            "found": True,
+                            "url": site_data.get("url_user", "")
+                        }
+        except FileNotFoundError:
+            # If file not found, try parsing stdout
+            if result.stdout:
                 try:
-                    data = json.loads(line)
+                    data = json.loads(result.stdout)
                     for site, site_data in data.items():
-                        if site_data.get("found"):
-                            output_data[site] = {"found": True, "url": site_data.get("url_user")}
-                except:
-                    continue
-            return output_data if output_data else {"status": "no_results"}
-        return {"status": "error", "message": result.stderr}
+                        if isinstance(site_data, dict) and site_data.get("found"):
+                            output_data[site] = {
+                                "found": True,
+                                "url": site_data.get("url_user", "")
+                            }
+                except json.JSONDecodeError:
+                    pass
+
+        return output_data if output_data else {}
+    except subprocess.TimeoutExpired:
+        return {"status": "timeout", "message": "Maigret scan timed out"}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        print(f"Maigret error: {str(e)}")
+        return {}
 
 def run_holehe(email: str) -> Dict[str, Any]:
     try:
