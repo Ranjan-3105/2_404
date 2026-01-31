@@ -442,26 +442,40 @@ async def osint_scan(request: OSINTRequest):
     """
     if not request.email and not request.username:
         raise HTTPException(status_code=400, detail="Email or username required")
-    
+
     # Run scans
     maigret_results = run_maigret(request.username) if request.username else {}
     holehe_results = run_holehe(request.email) if request.email else {}
     breach_data = await check_breach_data(request.email) if request.email else {}
-    
+
+    # Extract metrics
+    breach_count = breach_data.get("count", 0) if isinstance(breach_data, dict) else 0
+    maigret_platforms = len([k for k, v in maigret_results.items() if isinstance(v, dict) and v.get("found")])
+
+    # Calculate risk score
+    risk_score, risk_label = calculate_risk_score(
+        breach_count=breach_count,
+        username_platforms=maigret_platforms,
+        pii_score=0.0,
+        geolocation_confidence=0.0
+    )
+
     summary = {
         "email": request.email,
         "username": request.username,
-        "hibp_breaches": breach_data.get("count", 0) if isinstance(breach_data, dict) else 0,
-        "maigret_platforms_found": len([k for k, v in maigret_results.items() if isinstance(v, dict) and v.get("found")]),
+        "hibp_breaches": breach_count,
+        "maigret_platforms_found": maigret_platforms,
         "holehe_platforms_registered": len([k for k, v in holehe_results.items() if v is True]),
         "scan_status": "completed"
     }
-    
+
     return OSINTResponse(
         breach_data=breach_data,
         maigret_results=maigret_results,
         holehe_results=holehe_results,
         summary=summary,
+        risk_score=risk_score,
+        risk_label=risk_label,
         geolocation=None
     )
 
