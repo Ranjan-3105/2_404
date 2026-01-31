@@ -17,23 +17,7 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-# Try to import Whisper for audio transcription
-try:
-    import whisper
-    WHISPER_AVAILABLE = True
-except ImportError:
-    WHISPER_AVAILABLE = False
-    print("Warning: Whisper not installed. Install with: pip install openai-whisper")
-
-# Try to import GeoCLIP, if not available, handle gracefully
-try:
-    from geoclip import GeoCLIP
-    GEOCLIP_AVAILABLE = True
-except ImportError:
-    GEOCLIP_AVAILABLE = False
-    print("Warning: GeoCLIP not installed. Install with: pip install geoclip")
-
-app = FastAPI(title="OSINT Scanner API with Geolocation")
+app = FastAPI(title="OSINT Scanner API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -43,21 +27,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize GeoCLIP model globally (if available)
-geoclip_model = None
-if GEOCLIP_AVAILABLE:
-    try:
-        geoclip_model = GeoCLIP()
-    except Exception as e:
-        print(f"Warning: Could not initialize GeoCLIP model: {e}")
-
-# Initialize Whisper model globally (if available)
-whisper_model = None
-if WHISPER_AVAILABLE:
-    try:
-        whisper_model = whisper.load_model("base")
-    except Exception as e:
-        print(f"Warning: Could not initialize Whisper model: {e}")
+# ML models disabled to reduce memory footprint
+WHISPER_AVAILABLE = False
+GEOCLIP_AVAILABLE = False
 
 class OSINTRequest(BaseModel):
     email: Optional[str] = None
