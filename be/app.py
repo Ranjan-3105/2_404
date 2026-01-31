@@ -527,11 +527,15 @@ async def osint_scan_with_media(
 
     # Process image if provided
     geolocation = None
+    geo_confidence = 0.0
     if image and image.filename:
         file_content = await image.read()
         # Verify it's an image by checking content type
         if image.content_type and "image" in image.content_type:
             geolocation = await process_image_geolocation(file_content)
+            # Extract confidence from successful geolocation
+            if geolocation and geolocation.get("status") == "success":
+                geo_confidence = geolocation.get("confidence", 0.0)
         else:
             geolocation = {
                 "status": "error",
@@ -540,22 +544,38 @@ async def osint_scan_with_media(
 
     # Process audio if provided
     audio_analysis = None
+    pii_score = 0.0
     if audio and audio.filename:
         file_content = await audio.read()
         # Verify it's an audio file by checking content type
         if audio.content_type and "audio" in audio.content_type:
             audio_analysis = await process_audio_for_pii(file_content)
+            # Extract PII score from successful analysis
+            if audio_analysis and audio_analysis.get("status") == "success":
+                pii_score = audio_analysis.get("pii_score", 0.0)
         else:
             audio_analysis = {
                 "status": "error",
                 "message": "File must be an audio file (audio/mp3, audio/wav, etc.)"
             }
 
+    # Extract metrics for risk scoring
+    breach_count = breach_data.get("count", 0) if isinstance(breach_data, dict) else 0
+    maigret_platforms = len([k for k, v in maigret_results.items() if isinstance(v, dict) and v.get("found")])
+
+    # Calculate risk score
+    risk_score, risk_label = calculate_risk_score(
+        breach_count=breach_count,
+        username_platforms=maigret_platforms,
+        pii_score=pii_score,
+        geolocation_confidence=geo_confidence
+    )
+
     summary = {
         "email": email,
         "username": username,
-        "hibp_breaches": breach_data.get("count", 0) if isinstance(breach_data, dict) else 0,
-        "maigret_platforms_found": len([k for k, v in maigret_results.items() if isinstance(v, dict) and v.get("found")]),
+        "hibp_breaches": breach_count,
+        "maigret_platforms_found": maigret_platforms,
         "holehe_platforms_registered": len([k for k, v in holehe_results.items() if v is True]),
         "scan_status": "completed",
         "image_processed": geolocation is not None,
@@ -567,6 +587,8 @@ async def osint_scan_with_media(
         maigret_results=maigret_results,
         holehe_results=holehe_results,
         summary=summary,
+        risk_score=risk_score,
+        risk_label=risk_label,
         geolocation=geolocation,
         audio_analysis=audio_analysis
     )
