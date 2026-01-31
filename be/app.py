@@ -17,23 +17,7 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-# Try to import Whisper for audio transcription
-try:
-    import whisper
-    WHISPER_AVAILABLE = True
-except ImportError:
-    WHISPER_AVAILABLE = False
-    print("Warning: Whisper not installed. Install with: pip install openai-whisper")
-
-# Try to import GeoCLIP, if not available, handle gracefully
-try:
-    from geoclip import GeoCLIP
-    GEOCLIP_AVAILABLE = True
-except ImportError:
-    GEOCLIP_AVAILABLE = False
-    print("Warning: GeoCLIP not installed. Install with: pip install geoclip")
-
-app = FastAPI(title="OSINT Scanner API with Geolocation")
+app = FastAPI(title="OSINT Scanner API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -43,21 +27,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize GeoCLIP model globally (if available)
-geoclip_model = None
-if GEOCLIP_AVAILABLE:
-    try:
-        geoclip_model = GeoCLIP()
-    except Exception as e:
-        print(f"Warning: Could not initialize GeoCLIP model: {e}")
-
-# Initialize Whisper model globally (if available)
-whisper_model = None
-if WHISPER_AVAILABLE:
-    try:
-        whisper_model = whisper.load_model("base")
-    except Exception as e:
-        print(f"Warning: Could not initialize Whisper model: {e}")
+# ML models disabled to reduce memory footprint
+WHISPER_AVAILABLE = False
+GEOCLIP_AVAILABLE = False
 
 class OSINTRequest(BaseModel):
     email: Optional[str] = None
@@ -86,139 +58,27 @@ class OSINTResponse(BaseModel):
     geolocation: Optional[Dict[str, Any]] = None
     audio_analysis: Optional[Dict[str, Any]] = None
 
-# ============= GeoCLIP Geolocation Function =============
+# ============= Geolocation Function (Simplified) =============
 async def process_image_geolocation(file_content: bytes) -> Dict[str, Any]:
     """
-    Process image and extract geolocation data using GeoCLIP
-    Returns: {latitude, longitude, place, confidence, status}
+    Process image - GeoCLIP model disabled for lighter footprint
+    Returns: {status, message}
     """
-    try:
-        if not GEOCLIP_AVAILABLE or geoclip_model is None:
-            return {
-                "status": "error",
-                "message": "GeoCLIP not available. Install with: pip install geoclip"
-            }
-        
-        # Debug: check what we received
-        print(f"DEBUG: file_content type = {type(file_content)}")
-        print(f"DEBUG: file_content is Image? {isinstance(file_content, Image.Image)}")
-        
-        # If it's already a PIL Image, don't open it again
-        if isinstance(file_content, Image.Image):
-            image = file_content
-        elif isinstance(file_content, bytes):
-            # Open image from bytes
-            image = Image.open(io.BytesIO(file_content))
-        else:
-            return {
-                "status": "error",
-                "message": f"Invalid input type: {type(file_content)}"
-            }
-        
-        # Convert to RGB if necessary (remove alpha channel for compatibility)
-        if image.mode in ('RGBA', 'LA', 'P'):
-            image = image.convert('RGB')
-        
-        # Run GeoCLIP prediction with top_k parameter
-        prediction = geoclip_model.predict(image, top_k=1)
-        
-        # Extract results - GeoCLIP returns a list of predictions
-        if prediction and len(prediction) > 0:
-            # Get the top result
-            top_result = prediction[0] if isinstance(prediction, list) else prediction
-            
-            # GeoCLIP returns: {location: str, latitude: float, longitude: float, confidence: float}
-            latitude = top_result.get('latitude') if isinstance(top_result, dict) else None
-            longitude = top_result.get('longitude') if isinstance(top_result, dict) else None
-            place = top_result.get('location') if isinstance(top_result, dict) else top_result.get('place')
-            confidence = top_result.get('confidence') if isinstance(top_result, dict) else 0.0
-            
-            return {
-                "status": "success",
-                "latitude": float(latitude) if latitude else None,
-                "longitude": float(longitude) if longitude else None,
-                "place": str(place) if place else "Unknown",
-                "confidence": float(confidence) if confidence else 0.0
-            }
-        else:
-            return {
-                "status": "error",
-                "message": "Could not extract geolocation from image"
-            }
-            
-    except Exception as e:
-        import traceback
-        print(f"DEBUG: Error in geolocation: {str(e)}")
-        print(f"DEBUG: Error type: {type(e)}")
-        print(f"DEBUG: Traceback: {traceback.format_exc()}")
-        return {
-            "status": "error",
-            "message": f"Image processing error: {str(e)}"
-        }
+    return {
+        "status": "error",
+        "message": "Geolocation analysis temporarily disabled. GeoCLIP requires significant memory resources."
+    }
 
-# ============= Audio Processing with Whisper & Nyckel PII Detection =============
+# ============= Audio Processing (Simplified) =============
 async def process_audio_for_pii(file_content: bytes) -> Dict[str, Any]:
     """
-    Process audio file: transcribe with Whisper, analyze PII with Nyckel
-    Returns: {transcription, pii_score, detected_entities, status}
+    Audio transcription disabled for lighter footprint
+    Returns: {status, message}
     """
-    try:
-        if not WHISPER_AVAILABLE or whisper_model is None:
-            return {
-                "status": "error",
-                "message": "Whisper not available. Install with: pip install openai-whisper"
-            }
-
-        # Save audio to temporary file for Whisper
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as tmp_file:
-            tmp_file.write(file_content)
-            tmp_path = tmp_file.name
-
-        try:
-            # Transcribe audio with Whisper
-            result = whisper_model.transcribe(tmp_path)
-            transcription = result.get('text', '')
-
-            if not transcription:
-                return {
-                    "status": "error",
-                    "message": "Could not transcribe audio"
-                }
-
-            # Analyze PII using Nyckel API
-            pii_score = 0.0
-            detected_entities = []
-
-            try:
-                pii_result = await analyze_pii_with_nyckel(transcription)
-                pii_score = pii_result.get('score', 0.0)
-                detected_entities = pii_result.get('entities', [])
-            except Exception as e:
-                print(f"Warning: Nyckel PII analysis failed: {str(e)}")
-                # Continue without PII analysis rather than failing completely
-                pii_result = await analyze_pii_simple(transcription)
-                pii_score = pii_result.get('score', 0.0)
-                detected_entities = pii_result.get('entities', [])
-
-            return {
-                "status": "success",
-                "transcription": transcription,
-                "pii_score": pii_score,
-                "detected_entities": detected_entities
-            }
-        finally:
-            # Clean up temporary file
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
-
-    except Exception as e:
-        import traceback
-        print(f"DEBUG: Error in audio processing: {str(e)}")
-        print(f"DEBUG: Traceback: {traceback.format_exc()}")
-        return {
-            "status": "error",
-            "message": f"Audio processing error: {str(e)}"
-        }
+    return {
+        "status": "error",
+        "message": "Audio transcription temporarily disabled. Whisper requires significant memory resources."
+    }
 
 async def analyze_pii_with_nyckel(text: str) -> Dict[str, Any]:
     """
@@ -392,47 +252,87 @@ async def check_breach_data(email: str) -> Dict[str, Any]:
 def run_maigret(username: str) -> Dict[str, Any]:
     try:
         result = subprocess.run(
-            ["maigret", username, "-f", "json"],
+            ["maigret", username, "-f", "json", "-o", "/tmp/maigret_output"],
             capture_output=True,
             text=True,
-            timeout=60
+            timeout=120
         )
-        if result.returncode == 0:
-            lines = result.stdout.strip().split('\n')
-            output_data = {}
-            for line in lines:
+
+        # Read the JSON output file
+        output_data = {}
+        try:
+            with open("/tmp/maigret_output.json", "r") as f:
+                data = json.load(f)
+                for site, site_data in data.items():
+                    if isinstance(site_data, dict) and site_data.get("found"):
+                        output_data[site] = {
+                            "found": True,
+                            "url": site_data.get("url_user", "")
+                        }
+        except FileNotFoundError:
+            # If file not found, try parsing stdout
+            if result.stdout:
                 try:
-                    data = json.loads(line)
+                    data = json.loads(result.stdout)
                     for site, site_data in data.items():
-                        if site_data.get("found"):
-                            output_data[site] = {"found": True, "url": site_data.get("url_user")}
-                except:
-                    continue
-            return output_data if output_data else {"status": "no_results"}
-        return {"status": "error", "message": result.stderr}
+                        if isinstance(site_data, dict) and site_data.get("found"):
+                            output_data[site] = {
+                                "found": True,
+                                "url": site_data.get("url_user", "")
+                            }
+                except json.JSONDecodeError:
+                    pass
+
+        return output_data if output_data else {}
+    except subprocess.TimeoutExpired:
+        return {"status": "timeout", "message": "Maigret scan timed out"}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        print(f"Maigret error: {str(e)}")
+        return {}
 
 def run_holehe(email: str) -> Dict[str, Any]:
     try:
         result = subprocess.run(
-            ["holehe", email],
+            ["holehe", email, "-j"],
             capture_output=True,
             text=True,
-            timeout=60
+            timeout=120
         )
+
         output_data = {}
-        if result.returncode == 0:
-            lines = result.stdout.strip().split('\n')
-            for line in lines:
-                if any(x in line.lower() for x in ["found", "registered", "✓"]):
-                    parts = line.split(':')
-                    if len(parts) >= 2:
-                        output_data[parts[0].strip()] = True
-            return output_data if output_data else {"status": "no_results"}
-        return {"status": "error", "message": result.stderr}
+
+        # Try to parse JSON output first
+        if result.stdout:
+            try:
+                # Holehe outputs JSON with site data
+                data = json.loads(result.stdout)
+                for site, site_data in data.items():
+                    if isinstance(site_data, dict):
+                        # Check for "found" or "ratelimit" or other indicators of registration
+                        if site_data.get("found") or site_data.get("ratelimit"):
+                            output_data[site] = True
+                return output_data if output_data else {}
+            except json.JSONDecodeError:
+                pass
+
+        # Fallback: parse text output
+        lines = result.stdout.strip().split('\n')
+        for line in lines:
+            # Look for lines indicating found/verified accounts
+            if any(x in line.lower() for x in ["found", "registered", "✓", "verified"]):
+                # Extract platform name from the line
+                parts = line.split(':')
+                if len(parts) >= 1:
+                    platform = parts[0].strip().replace('✓', '').replace('●', '').strip()
+                    if platform:
+                        output_data[platform] = True
+
+        return output_data if output_data else {}
+    except subprocess.TimeoutExpired:
+        return {"status": "timeout", "message": "Holehe scan timed out"}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        print(f"Holehe error: {str(e)}")
+        return {}
 
 # ============= Main Endpoints =============
 @app.post("/osint/scan", response_model=OSINTResponse)
@@ -597,14 +497,13 @@ async def osint_scan_with_media(
 def health_check():
     return {
         "status": "healthy",
-        "message": "OSINT Scanner API with Geolocation & Audio Processing",
+        "message": "OSINT Scanner API",
         "tools": {
             "xposedornot": "Email Breach Detection",
             "maigret": "Username OSINT",
             "holehe": "Email Registration Check",
-            "geoclip": "Image Geolocation" if GEOCLIP_AVAILABLE else "Not Available",
-            "whisper": "Audio Transcription" if WHISPER_AVAILABLE else "Not Available",
-            "nyckel": "PII Detection"
+            "geoclip": "Not Available",
+            "whisper": "Not Available"
         }
     }
 

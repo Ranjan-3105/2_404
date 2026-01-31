@@ -6,6 +6,5 @@ requests
 maigret
 holehe
 python-multipart
-openai-whisper
 Pillow
 python-dotenv
