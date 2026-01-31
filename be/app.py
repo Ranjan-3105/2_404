@@ -58,75 +58,16 @@ class OSINTResponse(BaseModel):
     geolocation: Optional[Dict[str, Any]] = None
     audio_analysis: Optional[Dict[str, Any]] = None
 
-# ============= GeoCLIP Geolocation Function =============
+# ============= Geolocation Function (Simplified) =============
 async def process_image_geolocation(file_content: bytes) -> Dict[str, Any]:
     """
-    Process image and extract geolocation data using GeoCLIP
-    Returns: {latitude, longitude, place, confidence, status}
+    Process image - GeoCLIP model disabled for lighter footprint
+    Returns: {status, message}
     """
-    try:
-        if not GEOCLIP_AVAILABLE or geoclip_model is None:
-            return {
-                "status": "error",
-                "message": "GeoCLIP not available. Install with: pip install geoclip"
-            }
-        
-        # Debug: check what we received
-        print(f"DEBUG: file_content type = {type(file_content)}")
-        print(f"DEBUG: file_content is Image? {isinstance(file_content, Image.Image)}")
-        
-        # If it's already a PIL Image, don't open it again
-        if isinstance(file_content, Image.Image):
-            image = file_content
-        elif isinstance(file_content, bytes):
-            # Open image from bytes
-            image = Image.open(io.BytesIO(file_content))
-        else:
-            return {
-                "status": "error",
-                "message": f"Invalid input type: {type(file_content)}"
-            }
-        
-        # Convert to RGB if necessary (remove alpha channel for compatibility)
-        if image.mode in ('RGBA', 'LA', 'P'):
-            image = image.convert('RGB')
-        
-        # Run GeoCLIP prediction with top_k parameter
-        prediction = geoclip_model.predict(image, top_k=1)
-        
-        # Extract results - GeoCLIP returns a list of predictions
-        if prediction and len(prediction) > 0:
-            # Get the top result
-            top_result = prediction[0] if isinstance(prediction, list) else prediction
-            
-            # GeoCLIP returns: {location: str, latitude: float, longitude: float, confidence: float}
-            latitude = top_result.get('latitude') if isinstance(top_result, dict) else None
-            longitude = top_result.get('longitude') if isinstance(top_result, dict) else None
-            place = top_result.get('location') if isinstance(top_result, dict) else top_result.get('place')
-            confidence = top_result.get('confidence') if isinstance(top_result, dict) else 0.0
-            
-            return {
-                "status": "success",
-                "latitude": float(latitude) if latitude else None,
-                "longitude": float(longitude) if longitude else None,
-                "place": str(place) if place else "Unknown",
-                "confidence": float(confidence) if confidence else 0.0
-            }
-        else:
-            return {
-                "status": "error",
-                "message": "Could not extract geolocation from image"
-            }
-            
-    except Exception as e:
-        import traceback
-        print(f"DEBUG: Error in geolocation: {str(e)}")
-        print(f"DEBUG: Error type: {type(e)}")
-        print(f"DEBUG: Traceback: {traceback.format_exc()}")
-        return {
-            "status": "error",
-            "message": f"Image processing error: {str(e)}"
-        }
+    return {
+        "status": "error",
+        "message": "Geolocation analysis temporarily disabled. GeoCLIP requires significant memory resources."
+    }
 
 # ============= Audio Processing with Whisper & Nyckel PII Detection =============
 async def process_audio_for_pii(file_content: bytes) -> Dict[str, Any]:
