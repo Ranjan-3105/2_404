@@ -433,23 +433,46 @@ def run_maigret(username: str) -> Dict[str, Any]:
 def run_holehe(email: str) -> Dict[str, Any]:
     try:
         result = subprocess.run(
-            ["holehe", email],
+            ["holehe", email, "-j"],
             capture_output=True,
             text=True,
-            timeout=60
+            timeout=120
         )
+
         output_data = {}
-        if result.returncode == 0:
-            lines = result.stdout.strip().split('\n')
-            for line in lines:
-                if any(x in line.lower() for x in ["found", "registered", "✓"]):
-                    parts = line.split(':')
-                    if len(parts) >= 2:
-                        output_data[parts[0].strip()] = True
-            return output_data if output_data else {"status": "no_results"}
-        return {"status": "error", "message": result.stderr}
+
+        # Try to parse JSON output first
+        if result.stdout:
+            try:
+                # Holehe outputs JSON with site data
+                data = json.loads(result.stdout)
+                for site, site_data in data.items():
+                    if isinstance(site_data, dict):
+                        # Check for "found" or "ratelimit" or other indicators of registration
+                        if site_data.get("found") or site_data.get("ratelimit"):
+                            output_data[site] = True
+                return output_data if output_data else {}
+            except json.JSONDecodeError:
+                pass
+
+        # Fallback: parse text output
+        lines = result.stdout.strip().split('\n')
+        for line in lines:
+            # Look for lines indicating found/verified accounts
+            if any(x in line.lower() for x in ["found", "registered", "✓", "verified"]):
+                # Extract platform name from the line
+                parts = line.split(':')
+                if len(parts) >= 1:
+                    platform = parts[0].strip().replace('✓', '').replace('●', '').strip()
+                    if platform:
+                        output_data[platform] = True
+
+        return output_data if output_data else {}
+    except subprocess.TimeoutExpired:
+        return {"status": "timeout", "message": "Holehe scan timed out"}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        print(f"Holehe error: {str(e)}")
+        return {}
 
 # ============= Main Endpoints =============
 @app.post("/osint/scan", response_model=OSINTResponse)
