@@ -69,69 +69,16 @@ async def process_image_geolocation(file_content: bytes) -> Dict[str, Any]:
         "message": "Geolocation analysis temporarily disabled. GeoCLIP requires significant memory resources."
     }
 
-# ============= Audio Processing with Whisper & Nyckel PII Detection =============
+# ============= Audio Processing (Simplified) =============
 async def process_audio_for_pii(file_content: bytes) -> Dict[str, Any]:
     """
-    Process audio file: transcribe with Whisper, analyze PII with Nyckel
-    Returns: {transcription, pii_score, detected_entities, status}
+    Audio transcription disabled for lighter footprint
+    Returns: {status, message}
     """
-    try:
-        if not WHISPER_AVAILABLE or whisper_model is None:
-            return {
-                "status": "error",
-                "message": "Whisper not available. Install with: pip install openai-whisper"
-            }
-
-        # Save audio to temporary file for Whisper
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as tmp_file:
-            tmp_file.write(file_content)
-            tmp_path = tmp_file.name
-
-        try:
-            # Transcribe audio with Whisper
-            result = whisper_model.transcribe(tmp_path)
-            transcription = result.get('text', '')
-
-            if not transcription:
-                return {
-                    "status": "error",
-                    "message": "Could not transcribe audio"
-                }
-
-            # Analyze PII using Nyckel API
-            pii_score = 0.0
-            detected_entities = []
-
-            try:
-                pii_result = await analyze_pii_with_nyckel(transcription)
-                pii_score = pii_result.get('score', 0.0)
-                detected_entities = pii_result.get('entities', [])
-            except Exception as e:
-                print(f"Warning: Nyckel PII analysis failed: {str(e)}")
-                # Continue without PII analysis rather than failing completely
-                pii_result = await analyze_pii_simple(transcription)
-                pii_score = pii_result.get('score', 0.0)
-                detected_entities = pii_result.get('entities', [])
-
-            return {
-                "status": "success",
-                "transcription": transcription,
-                "pii_score": pii_score,
-                "detected_entities": detected_entities
-            }
-        finally:
-            # Clean up temporary file
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
-
-    except Exception as e:
-        import traceback
-        print(f"DEBUG: Error in audio processing: {str(e)}")
-        print(f"DEBUG: Traceback: {traceback.format_exc()}")
-        return {
-            "status": "error",
-            "message": f"Audio processing error: {str(e)}"
-        }
+    return {
+        "status": "error",
+        "message": "Audio transcription temporarily disabled. Whisper requires significant memory resources."
+    }
 
 async def analyze_pii_with_nyckel(text: str) -> Dict[str, Any]:
     """
