@@ -81,6 +81,8 @@ class OSINTResponse(BaseModel):
     maigret_results: Dict[str, Any]
     holehe_results: Dict[str, Any]
     summary: Dict[str, Any]
+    risk_score: float
+    risk_label: str
     geolocation: Optional[Dict[str, Any]] = None
     audio_analysis: Optional[Dict[str, Any]] = None
 
