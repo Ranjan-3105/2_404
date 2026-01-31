@@ -81,6 +81,8 @@ class OSINTResponse(BaseModel):
     maigret_results: Dict[str, Any]
     holehe_results: Dict[str, Any]
     summary: Dict[str, Any]
+    risk_score: float
+    risk_label: str
     geolocation: Optional[Dict[str, Any]] = None
     audio_analysis: Optional[Dict[str, Any]] = None
 
@@ -300,6 +302,65 @@ async def analyze_pii_simple(text: str) -> Dict[str, Any]:
         "entities": detected_entities
     }
 
+# ============= Risk Score Calculation =============
+def calculate_risk_score(
+    breach_count: int,
+    username_platforms: int,
+    pii_score: float = 0.0,
+    geolocation_confidence: float = 0.0
+) -> tuple[float, str]:
+    """
+    Calculate risk score (0-100) based on various factors:
+    - Email breaches: 1-10: +10, 11-30: +15, 30+: +50
+    - Username reuse: 1-10: +5, 11-20: +15, 20+: +40
+    - PII score: normalized (0-10 points)
+    - Geolocation confidence: normalized (0-10 points)
+
+    Returns: (risk_score, risk_label)
+    """
+    total_score = 0.0
+
+    # Breach risk scoring (max 50 points)
+    if breach_count >= 30:
+        total_score += 50
+    elif breach_count >= 11:
+        total_score += 15
+    elif breach_count >= 1:
+        total_score += 10
+
+    # Username reuse risk scoring (max 40 points)
+    if username_platforms >= 20:
+        total_score += 40
+    elif username_platforms >= 11:
+        total_score += 15
+    elif username_platforms >= 1:
+        total_score += 5
+
+    # PII detection risk (max 10 points)
+    pii_points = min(pii_score * 10, 10.0)
+    total_score += pii_points
+
+    # Geolocation confidence bonus (max 10 points) - higher confidence = more risk (more data exposed)
+    geo_points = min(geolocation_confidence * 10, 10.0)
+    total_score += geo_points
+
+    # Ensure score is between 0-100
+    total_score = min(max(total_score, 0.0), 100.0)
+
+    # Determine risk label
+    if total_score >= 80:
+        risk_label = "CRITICAL"
+    elif total_score >= 60:
+        risk_label = "HIGH"
+    elif total_score >= 40:
+        risk_label = "MEDIUM"
+    elif total_score >= 20:
+        risk_label = "LOW"
+    else:
+        risk_label = "MINIMAL"
+
+    return total_score, risk_label
+
 # ============= XposedOrNot API with Rate Limit Protection =============
 async def check_breach_data(email: str) -> Dict[str, Any]:
     """
@@ -381,26 +442,40 @@ async def osint_scan(request: OSINTRequest):
     """
     if not request.email and not request.username:
         raise HTTPException(status_code=400, detail="Email or username required")
-    
+
     # Run scans
     maigret_results = run_maigret(request.username) if request.username else {}
     holehe_results = run_holehe(request.email) if request.email else {}
     breach_data = await check_breach_data(request.email) if request.email else {}
-    
+
+    # Extract metrics
+    breach_count = breach_data.get("count", 0) if isinstance(breach_data, dict) else 0
+    maigret_platforms = len([k for k, v in maigret_results.items() if isinstance(v, dict) and v.get("found")])
+
+    # Calculate risk score
+    risk_score, risk_label = calculate_risk_score(
+        breach_count=breach_count,
+        username_platforms=maigret_platforms,
+        pii_score=0.0,
+        geolocation_confidence=0.0
+    )
+
     summary = {
         "email": request.email,
         "username": request.username,
-        "hibp_breaches": breach_data.get("count", 0) if isinstance(breach_data, dict) else 0,
-        "maigret_platforms_found": len([k for k, v in maigret_results.items() if isinstance(v, dict) and v.get("found")]),
+        "hibp_breaches": breach_count,
+        "maigret_platforms_found": maigret_platforms,
         "holehe_platforms_registered": len([k for k, v in holehe_results.items() if v is True]),
         "scan_status": "completed"
     }
-    
+
     return OSINTResponse(
         breach_data=breach_data,
         maigret_results=maigret_results,
         holehe_results=holehe_results,
         summary=summary,
+        risk_score=risk_score,
+        risk_label=risk_label,
         geolocation=None
     )
 
@@ -452,11 +527,15 @@ async def osint_scan_with_media(
 
     # Process image if provided
     geolocation = None
+    geo_confidence = 0.0
     if image and image.filename:
         file_content = await image.read()
         # Verify it's an image by checking content type
         if image.content_type and "image" in image.content_type:
             geolocation = await process_image_geolocation(file_content)
+            # Extract confidence from successful geolocation
+            if geolocation and geolocation.get("status") == "success":
+                geo_confidence = geolocation.get("confidence", 0.0)
         else:
             geolocation = {
                 "status": "error",
@@ -465,22 +544,38 @@ async def osint_scan_with_media(
 
     # Process audio if provided
     audio_analysis = None
+    pii_score = 0.0
     if audio and audio.filename:
         file_content = await audio.read()
         # Verify it's an audio file by checking content type
         if audio.content_type and "audio" in audio.content_type:
             audio_analysis = await process_audio_for_pii(file_content)
+            # Extract PII score from successful analysis
+            if audio_analysis and audio_analysis.get("status") == "success":
+                pii_score = audio_analysis.get("pii_score", 0.0)
         else:
             audio_analysis = {
                 "status": "error",
                 "message": "File must be an audio file (audio/mp3, audio/wav, etc.)"
             }
 
+    # Extract metrics for risk scoring
+    breach_count = breach_data.get("count", 0) if isinstance(breach_data, dict) else 0
+    maigret_platforms = len([k for k, v in maigret_results.items() if isinstance(v, dict) and v.get("found")])
+
+    # Calculate risk score
+    risk_score, risk_label = calculate_risk_score(
+        breach_count=breach_count,
+        username_platforms=maigret_platforms,
+        pii_score=pii_score,
+        geolocation_confidence=geo_confidence
+    )
+
     summary = {
         "email": email,
         "username": username,
-        "hibp_breaches": breach_data.get("count", 0) if isinstance(breach_data, dict) else 0,
-        "maigret_platforms_found": len([k for k, v in maigret_results.items() if isinstance(v, dict) and v.get("found")]),
+        "hibp_breaches": breach_count,
+        "maigret_platforms_found": maigret_platforms,
         "holehe_platforms_registered": len([k for k, v in holehe_results.items() if v is True]),
         "scan_status": "completed",
         "image_processed": geolocation is not None,
@@ -492,6 +587,8 @@ async def osint_scan_with_media(
         maigret_results=maigret_results,
         holehe_results=holehe_results,
         summary=summary,
+        risk_score=risk_score,
+        risk_label=risk_label,
         geolocation=geolocation,
         audio_analysis=audio_analysis
     )
