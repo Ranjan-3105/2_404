@@ -497,14 +497,13 @@ async def osint_scan_with_media(
 def health_check():
     return {
         "status": "healthy",
-        "message": "OSINT Scanner API with Geolocation & Audio Processing",
+        "message": "OSINT Scanner API",
         "tools": {
             "xposedornot": "Email Breach Detection",
             "maigret": "Username OSINT",
             "holehe": "Email Registration Check",
-            "geoclip": "Image Geolocation" if GEOCLIP_AVAILABLE else "Not Available",
-            "whisper": "Audio Transcription" if WHISPER_AVAILABLE else "Not Available",
-            "nyckel": "PII Detection"
+            "geoclip": "Not Available",
+            "whisper": "Not Available"
         }
     }
 
